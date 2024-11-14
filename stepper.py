@@ -313,11 +313,14 @@ def compute_pf_cv_alt(lbd_new,g,X,fail_times,obs_time):
     cv = np.sqrt(np.var(f_g_array))/(np.sqrt(n_run)*p_f)
     return p_f,cv
 
-def AIS_CE(lbd_0,transition_list,obs_name,T,max_time,N,alpha,transition_index_list):
+def AIS_CE(lbd_0,initial_transition_list,obs_name,T,max_time,N,alpha,transition_index_list):
     """
     AIS_CE for p
     """
     n_tr = len(transition_list)
+    parameter_list = initial_parameter_list.copy()
+    for param_index in range(n_tr):
+        transition_list[param_index][2] = lbd_0[param_index]
     quant_index = int(np.ceil(alpha*N))
     lbd = lbd_0.copy()
     # temporary lbd
@@ -412,7 +415,7 @@ def Sobol(lbd_g,lbd_indices_v,draw_lbd,transition_list,obs_name,T,max_time,N,M):
     draw_g = [(lambda lbd_t=lbd_i: np.random.default_rng().exponential(scale=1/lbd_t)) for lbd_i in lbd_g]
     g = [(lambda x, lbd_t=lbd_i: lbd_t*np.exp(-lbd_t*x)) for lbd_i in lbd_g]
     # draw samples according to the density
-    X,Y,fail_times = step.sample_IS(draw_g,transition_list,max_time,obs_name,N)
+    X,Y,fail_times = sample_IS(draw_g,transition_list,max_time,obs_name,N)
     
     # draw lbd samples for pick freeze
     lbd_samples = np.array([[draw_lbd[tr_index]() for tr_index in range(len(transition_list))] for m in range(M)])
@@ -495,7 +498,7 @@ def Sobol_mIS(lbd_g,lbd_indices_v,draw_lbd,transition_list,obs_name,T,max_time,N
     draw_g = [(lambda lbd_t=lbd_i: np.random.default_rng().exponential(scale=1/lbd_t)) for lbd_i in lbd_g]
     g = [(lambda x, lbd_t=lbd_i: lbd_t*np.exp(-lbd_t*x)) for lbd_i in lbd_g]
     # draw samples according to the density
-    X,_,fail_times = step.sample_IS(draw_g,transition_list,max_time,obs_name,N)
+    X,_,fail_times = sample_IS(draw_g,transition_list,max_time,obs_name,N)
     
     # for test
     #X_copy = X.copy()
@@ -534,7 +537,7 @@ def Sobol_mIS(lbd_g,lbd_indices_v,draw_lbd,transition_list,obs_name,T,max_time,N
             draw_g_new = [(lambda lbd_t=lbd_i: np.random.default_rng().exponential(scale=1/lbd_t)) for lbd_i in lbd_g_new]
             g_list+=[[(lambda x, lbd_t=lbd_i: lbd_t*np.exp(-lbd_t*x)) for lbd_i in lbd_g_new]]
             # draw samples according to the density
-            X_new,_,fail_times_new = step.sample_IS(draw_g_new,transition_list,max_time,obs_name,N)
+            X_new,_,fail_times_new = sample_IS(draw_g_new,transition_list,max_time,obs_name,N)
             #X_new = X_copy.copy()
             #fail_times_new = fail_times_copy.copy()
             # update samples and g (multiple IS)
