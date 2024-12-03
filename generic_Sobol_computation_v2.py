@@ -11,40 +11,80 @@ import functools as ft
 import openturns as ot
 import openturns.experimental as otexp
 import sys
-import openturns as ot
-from openturns.viewer import View
-import math
-
-def fourBranch(x):
-    x1 = x[0]
-    x2 = x[1]
-
-    g1 = 5 + 0.1 * (x1 - x2) ** 2 - (x1 + x2) / math.sqrt(2)
-    g2 = 5 + 0.1 * (x1 - x2) ** 2 + (x1 + x2) / math.sqrt(2)
-    g3 = (x1 - x2) + 9 / math.sqrt(2)
-    g4 = (x2 - x1) + 9 / math.sqrt(2)
-
-    return [min((g1, g2, g3, g4))]
 
 
-f_ot = ot.PythonFunction(2, 1, fourBranch)
-f_ot = ot.MemoizeFunction(f_ot)
+A1 = np.random.rand(10, 10)
+cov1 = np.dot(A1, A1.transpose())
+A2 = np.random.rand(10, 10)
+cov2 = np.dot(A2, A2.transpose())
+A3 = np.random.rand(10, 10)
+cov3 = np.dot(A3, A3.transpose())
+
+mu1 = np.random.rand(10)*5
+mu2 = np.random.rand(10)*5
+mu3 = np.random.rand(10)*5
+
+normal1 = multivariate_normal(mu1, cov1)
+normal2 = multivariate_normal(mu2, cov2)
+normal3 = multivariate_normal(mu3, cov3)
+
+#test_function = lambda x: 10000*(-normal1.pdf(x)-normal2.pdf(x)-normal3.pdf(x))
+
+def Ackley(x):
+    a = 20
+    b = 0.2
+    c = 2*np.pi
+    d = 10
+    square_sum = np.sum([x_i**2 for x_i in x])
+    cos_sum = np.sum([np.cos(c*x_i) for x_i in x])
+    return -a*np.exp(-b*np.sqrt(1/d*square_sum))-np.exp(1/d*cos_sum)+a+np.exp(1)
+
+mini1 = [1]*10
+mini2 = [3,2,1,3,2,1,3,2,1,3]
+
+mini3 = [1,3,2,1,3,2,1,3,2,1]
+#test_function = lambda x: Ackley(100*(x-mini1))+Ackley(100*(x-mini2))+Ackley(100*(x-mini3))
+
+def Ackley2(x,y):
+    a = 20
+    b = 0.2
+    c = 2*np.pi
+    return -a*np.exp(-b*np.sqrt(0.5*(x**2+y**2)))-np.exp(0.5*(np.cos(c*x)+np.cos(c*y)))+a+np.exp(1)
+
+def normal_pdf(x,y,mu1,mu2,sig1,sig2):
+    return 1/(2*np.pi*sig1*sig2)*np.exp(-0.5*(((x-mu1)/sig1)**2)+((y-mu2)/sig2)**2)
+
+#test_function = lambda x,y: Ackley2(x-10,y-10)+Ackley2(x-50,y-90)
+#test_function = lambda x,y: Ackley2(x-10,y-300)
+#test_function = lambda x,y: -normal_pdf(x,y,5,90,30,20)
+ALPHA = 1.1
+test_function = lambda x,y: -ALPHA*x-y
 
 
-QoI_threshold = 0
+
+f = lambda x : test_function(x[0],x[1])
+
+#QoI_threshold = 23
+
+#QoI_threshold = -1e4
+
+QoI_threshold = -100
+
+# def true_failure_proba(lambda_1,lambda_2):
+#     """
+#     True failure proba for -2x-y analytical function
+#     """
+#     # if lambda_1/2!=lambda_2:
+#     #     return lambda_2/(lambda_2-lambda_1/2)*(np.exp(-lambda_1*(-QoI_threshold)/2)-(lambda_1/(2*lambda_2))*np.exp(-lambda_2*(-QoI_threshold)))
+#     # print("lambda_1/2=lambda_2")
+#     # return np.exp(-lambda_1*(-QoI_threshold)/2)*(-QoI_threshold+2/lambda_1)
+
+#     if lambda_1/ALPHA!=lambda_2:
+#         return lambda_2/(lambda_2-lambda_1/ALPHA)*(np.exp(-lambda_1*(-QoI_threshold)/ALPHA)-(lambda_1/(ALPHA*lambda_2))*np.exp(-lambda_2*(-QoI_threshold)))
+#     return np.exp(-lambda_1*(-QoI_threshold)/2)*(-QoI_threshold+2/lambda_1)
 
 def true_failure_proba(lambda_1,lambda_2):
-    """
-    True failure proba for -2x-y analytical function
-    """
-    # if lambda_1/2!=lambda_2:
-    #     return lambda_2/(lambda_2-lambda_1/2)*(np.exp(-lambda_1*(-QoI_threshold)/2)-(lambda_1/(2*lambda_2))*np.exp(-lambda_2*(-QoI_threshold)))
-    # print("lambda_1/2=lambda_2")
-    # return np.exp(-lambda_1*(-QoI_threshold)/2)*(-QoI_threshold+2/lambda_1)
-
-    if lambda_1/ALPHA!=lambda_2:
-        return lambda_2/(lambda_2-lambda_1/ALPHA)*(np.exp(-lambda_1*(-QoI_threshold)/ALPHA)-(lambda_1/(ALPHA*lambda_2))*np.exp(-lambda_2*(-QoI_threshold)))
-    return np.exp(-lambda_1*(-QoI_threshold)/2)*(-QoI_threshold+2/lambda_1)
+    return lambda_1*np.exp(lambda_2*QoI_threshold)*(np.exp(-QoI_threshold*(lambda_2-lambda_1/ALPHA))-1)/(ALPHA*lambda_2-lambda_1)+np.exp(lambda_1*QoI_threshold/ALPHA)
 
 def get_X_param():
     # to do with XML file parsing
@@ -201,16 +241,7 @@ def sample_IS_old(draw_g, parameter_list, n_run):
 
     return X, Y, fail_times
 
-def sample_IS(aux_dist, n_run):
-    """
-    Run a simulation of size n_run.
-    Sampling done along draw_g 
-    Returns the output of the function g
-    """
-    # Draw delays for all simulations in a vectorized manner
-    X = aux_dist.getSample(n_run)
 
-    return X, np.array(f_ot(X)).T[0]
 
 def compute_pf_cv(g,parameter_list,X,fail_times,obs_time):
     """
@@ -412,7 +443,7 @@ def draw_X_IS_g_vectorized(draw_g, parameter_list, n_run):
     
     return delays
 
-def sample_IS_old(draw_g, parameter_list, n_run):
+def sample_IS(draw_g, parameter_list, n_run):
     """
     Run a simulation of size n_run.
     Sampling done along draw_g in a vectorized manner for efficiency.
@@ -969,7 +1000,7 @@ def best_combination_estimation_simplified(cv_list,p_f_previous,cv_previous,f_ar
         return p_f,current_cv,False
     return p_f_previous,cv_previous,True
 
-def best_combination_estimation(true_pf,cv_list,p_f_previous,var_previous,cv_previous,ess_previous,f_array_ind,f_array_true,g_array_list,g_list_duplicates,N,recheck):
+def best_combination_estimation(true_pf,cv_list,p_f_previous,var_previous,cv_previous,ess_previous,f_array_ind,f_array_true,g_array_list,g_list_duplicates,N,recheck,used_indices_lists,lbd_index):
     """
     Find combination of samples that yields the estimation of p_f for a given lbd with the smallest cv
     f_g_array array of the f/g coefficient for the lbd of interest
@@ -981,15 +1012,25 @@ def best_combination_estimation(true_pf,cv_list,p_f_previous,var_previous,cv_pre
 
     cv_list += [np.std(f_g_ind)/(np.sqrt(N)*p_f_last)]
 
+    # check if new sample is useful
+    better = False
+    better_and_used = False
+    if len(cv_list)==2:
+        if cv_list[0]>cv_list[1]:
+            better = True
+            if recheck:
+                better_and_used = True
+
     if not recheck:
-        return p_f_previous,cv_previous,var_previous,ess_previous,True
+        return p_f_previous,cv_previous,var_previous,ess_previous,True,better,better_and_used
 
     # add sample for estimation only if cv decreases
     useful_g_index = np.argmin(cv_list)
     useful_X_index = np.zeros(N * len(cv_list), dtype=int)
     useful_X_index[0:N] = np.arange(useful_g_index*N,(useful_g_index+1)*N)
     #useful_X_index = np.arange(useful_g_index*N,(useful_g_index+1)*N)
-    current_cv = cv_list[useful_g_index]
+    # 1/ESS = (cv**2+1)/N
+    current_cv = (cv_list[useful_g_index]**2+1)/N
     
     n_duplicates_used = np.zeros(len(g_list_duplicates), dtype=int)
 
@@ -1009,11 +1050,11 @@ def best_combination_estimation(true_pf,cv_list,p_f_previous,var_previous,cv_pre
     #candidate_X_indices = useful_X_index.copy()
     candidate_X_indices = np.zeros(N * len(cv_list), dtype=int)
     candidate_X_indices[0:N] = useful_X_index[0:N]
-    
+
+
     while cv_order_index<len(cv_list):
         # index of cv in the order of the algorithm
         index = argsorted_cv_list[cv_order_index]
-        
         n_used_indices = len(used_indices)+np.sum(n_duplicates_used)
 
         #additional_X_index = np.arange(index*N,(index+1)*N)
@@ -1033,14 +1074,15 @@ def best_combination_estimation(true_pf,cv_list,p_f_previous,var_previous,cv_pre
         #var = (current_var*(n_used_indices)**2/(n_used_indices+1)**2)+np.var(f_array[index*N:(index+1)*N]/g_candidate[index*N:(index+1)*N])/(N*(n_used_indices+1)**2)
         var = 0
         for i in used_indices+[index]:
-            if g_list_duplicates[i] == 0:
-                var+=np.var(f_array_ind[i*N:(i+1)*N]/g_candidate[i*N:(i+1)*N])
+            #if g_list_duplicates[i] == 0:
+            var+=np.var(f_array_ind[i*N:(i+1)*N]/g_candidate[i*N:(i+1)*N])
             # if 
-            else:
-                var+=(1+n_duplicates_used[i])*np.var(f_array_ind[i*N:(i+1+n_duplicates_used[i])*N]/g_candidate[i*N:(i+1+n_duplicates_used[i])*N])
+            # else:
+            #     var+=(1+n_duplicates_used[i])*np.var(f_array_ind[i*N:(i+1+n_duplicates_used[i])*N]/g_candidate[i*N:(i+1+n_duplicates_used[i])*N])
 
         var/=((n_used_indices+1)**2*N)
-        cv = np.sqrt(var)/p_f_test
+        cv_true = np.sqrt(var)/p_f_test
+        cv = (cv_true**2+1)/(N*(n_used_indices+1))
 
         if cv<current_cv:
             useful_X_index[n_used_indices*N:(n_used_indices+1)*N] = candidate_X_indices[n_used_indices*N:(n_used_indices+1)*N]
@@ -1054,52 +1096,51 @@ def best_combination_estimation(true_pf,cv_list,p_f_previous,var_previous,cv_pre
             # handle duplicated samples
 
 
-            if g_list_duplicates[index]!=0:
-                n_used_indices+=1
-                # loop on all duplicates for this index, break loop if duplicate no longer useful
-                for _ in range(g_list_duplicates[index]):
-                    # candidate mIS g
-                    g_candidate = n_used_indices/(n_used_indices+1)*g+1/(n_used_indices+1)*g_additional
+            # if g_list_duplicates[index]!=0:
+            #     n_used_indices+=1
+            #     # loop on all duplicates for this index, break loop if duplicate no longer useful
+            #     for _ in range(g_list_duplicates[index]):
+            #         # candidate mIS g
+            #         g_candidate = n_used_indices/(n_used_indices+1)*g+1/(n_used_indices+1)*g_additional
 
-                    #candidate_X_indices = np.concatenate((useful_X_index,additional_X_index))
-                    if (n_used_indices+1)*N>len(candidate_X_indices):
-                        print(f"nbd gdup index : {g_list_duplicates[index]}")
-                        print("Problem: trying to access non existing indices for candidates")
-                        print(f"length of candidate_X_indices: {len(candidate_X_indices)}, index tried: {(n_used_indices+1)*N}, n_used_indices: {n_used_indices}")
-                        print(f"n dup : {n_duplicates_used}")
-                    candidate_X_indices[n_used_indices*N:(n_used_indices+1)*N] = np.arange((index+1)*N,(index+2)*N)#candidate_X_indices[(n_used_indices-1)*N:n_used_indices*N]
+            #         #candidate_X_indices = np.concatenate((useful_X_index,additional_X_index))
+            #         # if (n_used_indices+1)*N>len(candidate_X_indices)-1:
+            #         #     print("Problem: trying to access non existing indices for candidates")
+            #         #     print(f"length of candidate_X_indices: {len(candidate_X_indices)}, index tried: {(n_used_indices+1)*N}, n_used_indices: {n_used_indices}")
+            #         candidate_X_indices[n_used_indices*N:(n_used_indices+1)*N] = candidate_X_indices[(n_used_indices-1)*N:n_used_indices*N]
 
-                    f_g_ind = f_array_ind[candidate_X_indices[:(n_used_indices+1)*N]]/g_candidate[candidate_X_indices[:(n_used_indices+1)*N]]
-                    f_g_true = f_array_true[candidate_X_indices[:(n_used_indices+1)*N]]/g_candidate[candidate_X_indices[:(n_used_indices+1)*N]]
-                    p_f_test = np.mean(f_g_ind)
+            #         f_g_ind = f_array_ind[candidate_X_indices[:(n_used_indices+1)*N]]/g_candidate[candidate_X_indices[:(n_used_indices+1)*N]]
+            #         f_g_true = f_array_true[candidate_X_indices[:(n_used_indices+1)*N]]/g_candidate[candidate_X_indices[:(n_used_indices+1)*N]]
+            #         p_f_test = np.mean(f_g_ind)
                     
-                    # compute variance of mIS estimator
-                    var = 0
-                    for i in used_indices:
-                        if g_list_duplicates[i] == 0:
-                            var+=np.var(f_array_ind[i*N:(i+1)*N]/g_candidate[i*N:(i+1)*N])
-                        else:
-                            var+=(1+n_duplicates_used[i])*np.var(f_array_ind[i*N:(i+1+n_duplicates_used[i])*N]/g_candidate[i*N:(i+1+n_duplicates_used[i])*N])
+            #         # compute variance of mIS estimator
+            #         var = 0
+            #         for i in used_indices:
+            #             if g_list_duplicates[i] == 0:
+            #                 var+=np.var(f_array_ind[i*N:(i+1)*N]/g_candidate[i*N:(i+1)*N])
+            #             else:
+            #                 var+=(1+n_duplicates_used[i])*np.var(f_array_ind[i*N:(i+1+n_duplicates_used[i])*N]/g_candidate[i*N:(i+1+n_duplicates_used[i])*N])
 
-                    var+=(2+n_duplicates_used[index])*np.var(f_array_ind[i*N:(i+2+n_duplicates_used[index])*N]/g_candidate[i*N:(i+2+n_duplicates_used[index])*N])
-                    var/=((n_used_indices+n_duplicates_used[index]+1)**2*N)
-                    cv = np.sqrt(var)/p_f_test
-                    if cv<current_cv:
-                        n_duplicates_used[index]+=1
-                        #useful_X_index = candidate_X_indices.copy()
-                        useful_X_index[n_used_indices*N:(n_used_indices+1)*N] = candidate_X_indices[n_used_indices*N:(n_used_indices+1)*N]
-                        g = g_candidate.copy()
-                        current_cv = cv
-                        current_var = var
-                        p_f = p_f_test
-                        ESS_estim =  np.sum(f_g_true)**2/np.sum(f_g_true**2)
-                        n_used_indices+=1
-                        #kept_cv_indices_increasing+=[cv_order_index]
-                        #cv_order_index+=1
-                    else:
-                        break
+            #         var+=(2+n_duplicates_used[index])*np.var(f_array_ind[i*N:(i+2+n_duplicates_used[index])*N]/g_candidate[i*N:(i+2+n_duplicates_used[index])*N])
+            #         var/=((n_used_indices+n_duplicates_used[index]+1)**2*N)
+            #         cv_true = np.sqrt(var)/p_f_test
+            #         cv = (cv_true**2+1)/(N*(n_used_indices+1))
+            #         if cv<current_cv:
+            #             n_duplicates_used[index]+=1
+            #             #useful_X_index = candidate_X_indices.copy()
+            #             useful_X_index[n_used_indices*N:(n_used_indices+1)*N] = candidate_X_indices[n_used_indices*N:(n_used_indices+1)*N]
+            #             g = g_candidate.copy()
+            #             current_cv = cv
+            #             current_var = var
+            #             p_f = p_f_test
+            #             ESS_estim =  np.sum(f_g_true)**2/np.sum(f_g_true**2)
+            #             n_used_indices+=1
+            #             #kept_cv_indices_increasing+=[cv_order_index]
+            #             #cv_order_index+=1
+            #         else:
+            #             break
             used_indices += [index]
-        cv_order_index+=(g_list_duplicates[index]+1)
+        cv_order_index+=1#(g_list_duplicates[index]+1)
         
     #if len(kept_cv_indices_increasing)>=2 :
         #if kept_cv_indices_increasing[-1]-kept_cv_indices_increasing[-2]!=1:
@@ -1107,11 +1148,12 @@ def best_combination_estimation(true_pf,cv_list,p_f_previous,var_previous,cv_pre
     #del f_g, p_f_last, var, cv_last, useful_X_index, g, candidate_X_indices, g_candidate,n_duplicates_used
     #gc.collect() 
     if current_cv<cv_previous:
-        return p_f,current_cv,current_var,ESS_estim,False
+        used_indices_lists[lbd_index]=used_indices
+        return p_f,current_cv,current_var,ESS_estim,False,better,better_and_used
 
-    return p_f_previous,cv_previous,var_previous,ess_previous,True
+    return p_f_previous,cv_previous,var_previous,ess_previous,True,False,False
 
-def best_combination_estimation_simpler(true_pf,cv_list,p_f_previous,var_previous,cv_previous,ess_previous,f_array_ind,f_array_true,g_array_list,g_list_duplicates,N,recheck):
+def best_combination_estimation_simpler(true_pf,cv_list,p_f_previous,var_previous,cv_previous,ess_previous,f_array_ind,f_array_true,g_array_list,g_list_duplicates,N):
     """
     Find combination of samples that yields the estimation of p_f for a given lbd with the smallest cv
     f_g_array array of the f/g coefficient for the lbd of interest
@@ -1124,9 +1166,6 @@ def best_combination_estimation_simpler(true_pf,cv_list,p_f_previous,var_previou
     #cv_last = np.sqrt(var)/(np.sqrt(N)*p_f_last)
     #var_list += [np.var(f_g)/N]
     cv_list += [np.std(f_g_ind)/(np.sqrt(N)*p_f_last)]
-
-    if not recheck:
-        return p_f_previous,cv_previous,var_previous,ess_previous,True
     #var_list += [np.sqrt(np.var(f_g)/N)/p_f_last]
     # add sample for estimation only if cv decreases
     useful_g_index = np.argmin(cv_list)
@@ -1649,11 +1688,72 @@ def update_g_array_list(g_list,g_array_list,X,fail_times,obs_time,N):
     # update previous arrays with evaluation of new X values
     for g_index in range(len(g_array_list)):
         g_array_list[g_index] = np.pad(g_array_list[g_index], (0, max(0, n_run - len(g_array_list[g_index]))), mode='constant')
-        g_array_list[g_index][n_run-N:n_run] = np.array(g_list[g_index].computePDF([X[simu_index] for simu_index in range(n_run-N,n_run)])).T[0]
+        #g_array_list[g_index].resize(n_run,refcheck=False)
+        # for simu_index in range(n_run-N,n_run):
+        #     g_array_list[g_index][simu_index] = 1.
+        #     if fail_times[simu_index]<obs_time:
+        #         for tr_index in range(len(lbd_new)):
+        #             x = X[simu_index][tr_index]
+        #             g_array_list[g_index][simu_index]*= g_list[g_index][tr_index](x)
 
-    new_g_array = np.array(g_list[-1].computePDF([X[simu_index]
-                        for simu_index in range(n_run)])).T[0]
+        # Create a mask for simulations where fail_times < obs_time
+        #mask = fail_times[n_run-N:n_run] < obs_time
 
+        # Initialize g_array to 1 for all simulations
+        #g_array_list[g_index][n_run-N:n_run] = 1.
+        g_array_list[g_index][n_run-N:n_run] = np.array([g_list[g_index](X[simu_index]) for simu_index in range(n_run-N,n_run)])#range(n_run-N,n_run)])
+        # If the fail time is less than obs_time, calculate g_array
+        # if np.any(mask):
+        #     X_masked = X[n_run-N:n_run][mask]
+
+        #     # Apply g_list functions to each transition for each simulation
+        #     # g_values = np.array([[g_list[g_index][tr_index](X_masked[simu_index, tr_index])
+        #     #                     for tr_index in range(len(lbd_new))]
+        #     #                     for simu_index in range(X_masked.shape[0])])
+        #     g_values = np.array([g_list[g_index](X_masked[simu_index]) for simu_index in range(X_masked.shape[0])])
+
+        #     # Compute the product across transitions for each simulation
+        #     #g_prod = np.prod(g_values, axis=1)
+
+        #     # Assign computed values back to g_array_list at the corresponding index
+        #     g_array_list[g_index][n_run-N:n_run][mask] = g_values#g_prod
+
+
+    # array for new g
+    # new_g_array = np.ones(n_run)
+    # for simu_index in range(n_run):
+    #     if fail_times[simu_index]<obs_time:
+    #         for tr_index in range(len(lbd_new)):
+    #             x = X[simu_index][tr_index]
+    #             new_g_array[simu_index]*= g_list[-1][tr_index](x)
+
+    # Create a mask for simulations where fail_times < obs_time
+    #mask = fail_times < obs_time
+
+    # Initialize new_g_array with ones for all simulations
+    #new_g_array = np.ones(n_run)
+
+    # Filter X based on the mask for fail_times < obs_time
+    #X_masked = X[mask]
+
+    # Apply g_list functions for each transition to the masked X values
+    # g_values = np.array([[g_list[-1][tr_index](X_masked[simu_index, tr_index])
+    #                     for tr_index in range(len(lbd_new))]
+    #                     for simu_index in range(X_masked.shape[0])])
+    
+    new_g_array = np.array([g_list[-1](X[simu_index])
+                        for simu_index in range(n_run)])
+    #g_values = np.array([g_list[-1](X_masked[simu_index])
+                        #for simu_index in range(X_masked.shape[0])])
+    # Compute the product of g_list values across transitions for each simulation
+    #g_prod = np.prod(g_values, axis=1)
+
+    # Update new_g_array only where fail_times < obs_time
+    #print(f"new_g_array[mask] : {new_g_array[mask]}")
+    #print(f"g_values : {g_values}")
+    #new_g_array[mask] = g_values#g_prod
+    
+    # add new g array
     g_array_list += [new_g_array]
     
 def update_g_array_baseline(g,g_array_baseline,X):
@@ -1751,7 +1851,7 @@ def compute_pf_cv_baseline(lbd_new,X,fail_times,obs_time,g_array,f_array_list,lb
     ESS = np.sum(f_g)**2/np.sum(f_g**2)
     return p_f,var,ESS
 
-def compute_pf_cv_mult_alt2(true_pf,var_list,p_f_previous,var_previous,ess_previous,error_previous,lbd_new,g_list_duplicates,X,fail_times,obs_time,g_array_list,f_array_list,lbd_index,update_list):
+def compute_pf_cv_mult_alt2(true_pf,var_list,p_f_previous,var_previous,ess_previous,error_previous,lbd_new,g_list_duplicates,X,fail_times,obs_time,g_array_list,f_array_list,lbd_index,update_list,used_indices_lists):
     """
     Compute failure probability and coefficient of variation for an IS simulations until obs_time
     with a different lambda that the one used for sampling
@@ -1765,29 +1865,48 @@ def compute_pf_cv_mult_alt2(true_pf,var_list,p_f_previous,var_previous,ess_previ
     if len(f_array_list[lbd_index]) == 0:
         raise Exception("f_array empty 1")
 
-    mu = [lbd_new[0],lbd_new[1]]
-    Sigma = ot.CovarianceMatrix([[lbd_new[2],0],[0,lbd_new[2]]])
     
-    f_array = np.array(ot.Normal(mu,Sigma).computePDF(X[n_run_previous:n_run])).T[0]
-    # Assign computed values back to f_array_list at the corresponding index
+    # for simu_index in range(n_run_previous,n_run):
+    #     # if failure before obs_time
+    #     if fail_times[simu_index]<obs_time:
+    #         # compute f
+    #         f = 1
+    #         for tr_index in range(len(lbd_new)):
+    #             lbd = lbd_new[tr_index]
+    #             x = X[simu_index][tr_index]
+    #             f*= lbd*np.exp(-lbd*x)
+    #         f_array_list[lbd_index][simu_index] = f
+    
+    # Create a mask for simulations where fail_time < obs_time
+    #mask = fail_times[n_run_previous:n_run] < obs_time
 
+    # Filter X and fail_times arrays basus:n_run][mask]
+
+    # Vectorized computation for `f`
+    #lbd_exp_values = np.exp(-lbd_new[:, np.newaxis] * X_masked.T)
+    lbd_exp_values = np.exp(-lbd_new[:, np.newaxis] * X[n_run_previous:n_run].T)
+    f_array = np.prod(lbd_new[:, np.newaxis] * lbd_exp_values, axis=0)*(X[n_run_previous:n_run,0]>0)*(X[n_run_previous:n_run,1]>0)
+
+    # Assign computed values back to f_array_list at the corresponding index
+    #f_array_list[lbd_index][n_run_previous:n_run][mask] = f_array
     f_array_list[lbd_index][n_run_previous:n_run]= f_array
     # f_array multiplied by indicator function of failure zone
     f_array_ind = f_array_list[lbd_index].copy()
     f_array_ind[fail_times>=obs_time]=0
     #if n_run-n_run_previous != :
     #    print(f"problem n_run-n_run_previous = {n_run-n_run_previous}")
-    #    raise Exception("n_run-n_run_previous not adequate")
+    #    raise Exception("n_runed on the mask
+    #X_masked = X[n_run_previo-n_run_previous not adequate")
     if len(f_array_list[lbd_index]) == 0:
         raise Exception("f_array empty 2")
     #print(f"\n f_array_list: {f_array_list}")
     # recheck p_f only if lbd_index in list of index to check
     recheck = lbd_index in update_list
-    p_f,error,var,ess_estim,same_sample_bool = best_combination_estimation_simpler(true_pf,var_list,p_f_previous,var_previous,error_previous,ess_previous,f_array_ind,f_array_list[lbd_index],g_array_list,g_list_duplicates,n_run-n_run_previous,recheck)
+    p_f,error,var,ess_estim,same_sample_bool,better,better_and_used = best_combination_estimation(true_pf,var_list,p_f_previous,var_previous,error_previous,ess_previous,f_array_ind,f_array_list[lbd_index],g_array_list,g_list_duplicates,n_run-n_run_previous,recheck,used_indices_lists,lbd_index)
 
     if len(f_array_list[lbd_index]) == 0:
         raise Exception("f_array empty 3")
-    return p_f,error,var,ess_estim,same_sample_bool
+    return p_f,error,var,ess_estim,same_sample_bool,better,better_and_used
 
 def compute_pf_cv_new(true_pf,var_list,p_f_previous,var_previous,ess_previous,error_previous,lbd_new,g_list_duplicates,X,fail_times,obs_time,g_array_list,f_array_list,lbd_index,N):
     """
@@ -1913,7 +2032,8 @@ def pick_freeze_alt(p_f):
 
 def select_index_to_improve(p_f,var,n_estim):
     """
-    Estimate Total order Sobols of pick freeze estimator (with rank estimator)
+    Estimate first order Sobols of pick freeze estimator (with rank estimator)
+    Get associated cv
     """
     n = len(p_f)
     ot_Sobol = ot.PythonFunction(n,1,pick_freeze_alt)
@@ -1926,7 +2046,7 @@ def select_index_to_improve(p_f,var,n_estim):
     mySobol = otexp.RankSobolSensitivityAlgorithm(p_f_sample, output_sample)
     indices = mySobol.getFirstOrderIndices()
 
-    return np.array(indices)
+    return np.array(indices),np.std(p_f_sample)/np.mean(p_f_sample)
 
 def compute_ksi(p_f,var,n_estim,index,n_dist = 100,reduction_factor_list=[0.4]):
     """
@@ -2011,25 +2131,74 @@ def compute_Sobol_confidence_interval(S,p_f,M):
     higher_bound = S+1.96*sigma/np.sqrt(M)
     return sigma,lower_bound,higher_bound
 
-def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
+def get_used_indices_set_list(used_indices):
+    """
+    """
+    used_indices_set = []
+    indices_list = []
+    for index in range(len(used_indices)):
+        item = set(used_indices[index])
+        new=True
+        for i in range(len(used_indices_set)):
+            if item==used_indices_set[i]:
+                indices_list[i].append(index)
+                new = False
+        if new:
+            used_indices_set.append(set(item))
+            indices_list.append([index])
+    return used_indices_set,indices_list
+
+def Sobol_mIS_adaptive(lbd_g_list,lbd_indices_v,parameter_list,T,N,M,alpha,eps,max_iter):
     """
     Sobol indices of lambda of indices lbd_indices_v, with lamba drawn according to draw_lbd
-    Initial sampling density aux_dist_0 obtained for a lbd_0
+    Initial sampling densities lbd_g obtained for some initial points
     Computation with multiple importance sampling
     
     """
 
-    # draw samples according to the density
-    X,fail_times = sample_IS(aux_dist_0,N)
+    # default AIS-CE start point
+    lbd_start = [[0,0],np.array([[1,0],[0,1]])]
     
+    # initial lbd for the sampling density
+    #_,_,lbd_g = AIS_CE(lbd_0,parameter_list,obs_name,T,max_time,N,alpha,[i for i in range(len(parameter_list))])
+    #print("initial IS parameters:")
+    #for x_index in range(len(lbd_g)):
+    #    print(f"{parameter_list[x_index][1]} ({x_index}): {lbd_g[x_index]}")
+    # def create_normal_drawer(lbd_t):
+    #     return np.random.default_rng().normal(loc=lbd_t[0], scale=lbd_t[1])
+    # draw_g = [create_normal_drawer(lbd_i) for lbd_i in lbd_g]
+    #draw_g = [(lambda lbd_t=lbd_i: np.random.default_rng().normal(loc = lbd_t[0],scale=lbd_t[1])) for lbd_i in lbd_g]
+    draw_g = (lambda lbd_t = lbd_g_list[0] : np.random.default_rng().multivariate_normal(mean = lbd_t[0], cov = lbd_t[1]))
 
-    lbd_samples = np.array([[np.random.default_rng().uniform(-1,1),np.random.default_rng().uniform(-1,1),np.random.default_rng().uniform(0.2,2)] for _ in range(M)])
-    lbd_samples_v = np.array([[np.random.default_rng().uniform(-1,1),np.random.default_rng().uniform(-1,1),np.random.default_rng().uniform(0.2,2)] for _ in range(M)])
+    # def create_gaussian_function(lbd_t):
+    #     def gaussian(x):
+    #         return 1 / (np.sqrt(2 * np.pi) * lbd_t[1]) * np.exp(-0.5 * ((x - lbd_t[0]) / lbd_t[1]) ** 2)
+    #     return gaussian
+
+    # g = [create_gaussian_function(lbd_i) for lbd_i in lbd_g]
+    #g = [(lambda x, lbd_t=lbd_i: 1/(np.sqrt(2*np.pi)*lbd_t[1])*np.exp(-0.5*((x-lbd_t[0])/lbd_t[1])**2)) for lbd_i in lbd_g]
+    #g = lambda x, lbd_t=lbd_g_list[0]: 1/(2*np.pi*np.linalg.det(lbd_t[1]))*np.exp(-0.5*(np.array([x-lbd_t[0]])@np.linalg.inv(lbd_t[1])@np.array([x-lbd_t[0]]).T)[0,0])
+    g = lambda x, lbd_t=lbd_g_list[0]: multivariate_normal.pdf(lbd_t[0],mean = lbd_t[0],cov = lbd_t[1])
+
+    # draw samples according to the density
+    X,_,fail_times = sample_IS(draw_g,parameter_list,N)
+    
+    # for test
+    #X_copy = X.copy()
+    #fail_times_copy = fail_times.copy()
+    # draw lbd samples for pick freeze
+    #draw_lbd = [(lambda lbd_t=lbd_i: np.random.default_rng().uniform(lbd_t-0.1*lbd_t,lbd_t+0.1*lbd_t)) for lbd_i in [0.1,0.1]]
+
+    lbd_samples = np.array([[np.random.default_rng().uniform(0.1,0.3) for tr_index in range(len(parameter_list))] for _ in range(M)])
+    #lbd_samples = np.array([[0.29,0.1]])
+    lbd_samples_v = np.array([[np.random.default_rng().uniform(0.1,0.3) for tr_index in range(len(parameter_list))] for _ in range(M)])
+    #lbd_samples = np.array([[draw_lbd[tr_index]() for tr_index in range(len(parameter_list))] for _ in range(M)])
+    #lbd_samples_v = np.array([[draw_lbd[tr_index]() for tr_index in range(len(parameter_list))] for _ in range(M)])
     for index in lbd_indices_v:
         lbd_samples_v[:,index] = lbd_samples[:,index].copy()
     full_lbd_samples = np.concatenate((lbd_samples,lbd_samples_v))
     # list of sampling functions obtained with AIS-CE
-    g_list = [aux_dist_0]
+    g_list = [g]
     # list that indicates if the g of the corresponding index in g_list is a duplicate of the previous g in the list, and how many duplicates of g there is
     g_list_duplicates = [0]
     
@@ -2039,14 +2208,11 @@ def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
     f_array_list = [np.zeros(0) for _ in full_lbd_samples]
     #lbd_start = lbd_g.copy()
     # estimation with lambda samples and true probabilities
-    # p_true = np.array([true_failure_proba(*lbd_sample) for lbd_sample in full_lbd_samples])
-    # print(f"True probas : {p_true}")
-    # S_true = ((1/M)*np.sum([p_true[i]*p_true[i+M]  for i in range(M)])-(1/M)*np.sum([p_true[i] for i in range(M)])* (1/M)*np.sum([p_true[i+M]  for i in range(M)]))/ ((1/M)*np.sum([p_true[i]**2 for i in range(M)])- ((1/M)*np.sum([p_true[i]  for i in range(M)]))**2)
-    # print(f"Sobol estimation with true probabilities: {S_true}")
+    p_true = np.array([true_failure_proba(*lbd_sample) for lbd_sample in full_lbd_samples])
+    print(f"True probas : {p_true}")
+    S_true = ((1/M)*np.sum([p_true[i]*p_true[i+M]  for i in range(M)])-(1/M)*np.sum([p_true[i] for i in range(M)])* (1/M)*np.sum([p_true[i+M]  for i in range(M)]))/ ((1/M)*np.sum([p_true[i]**2 for i in range(M)])- ((1/M)*np.sum([p_true[i]  for i in range(M)]))**2)
+    print(f"Sobol estimation with true probabilities: {S_true}")
     p_f = [1 for _ in full_lbd_samples]
-
-    # dummy values to avoid code change
-    p_true = [1 for _ in full_lbd_samples]
     
     cv = [np.inf for _ in full_lbd_samples]
     # ESS
@@ -2056,6 +2222,8 @@ def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
     estim_cv = [np.inf for _ in full_lbd_samples]
     #useful_X_index = [np.zeros(0) fo _ in full_lbd_samples]
     var_lists = [[] for _ in full_lbd_samples]
+    # used indices of mixture for each theta
+    used_indices_lists = [[] for _ in full_lbd_samples]
     # previous arg for cv_max for comparison, to avoid recomputation of AIS-CE in case of same index for cv_max
     cv_arg_max_previous = -1
     #var_arg_max_previous = -1
@@ -2072,10 +2240,11 @@ def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
         print("g_array_list updated")
         # compute p_T estimations for all lbd samples
         # if n_IS == 1:
-        p_f_and_cv = np.array([compute_pf_cv_mult_alt2(p_true[lbd_index],var_lists[lbd_index],p_f[lbd_index],var[lbd_index],ess[lbd_index],cv[lbd_index],full_lbd_samples[lbd_index],g_list_duplicates,X,fail_times,T,g_array_list,f_array_list,lbd_index,update_list) for lbd_index in range(len(full_lbd_samples))])
+        p_f_and_cv = np.array([compute_pf_cv_mult_alt2(p_true[lbd_index],var_lists[lbd_index],p_f[lbd_index],var[lbd_index],ess[lbd_index],cv[lbd_index],full_lbd_samples[lbd_index],g_list_duplicates,X,fail_times,T,g_array_list,f_array_list,lbd_index,update_list,used_indices_lists) for lbd_index in range(len(full_lbd_samples))])
         if n_IS>=2:
             print(f"new estimated proba for selected index for IS: {p_f_and_cv[cv_arg_max,0]}")
             print(f"corresponding new estimation variance: {p_f_and_cv[cv_arg_max,2]}")
+
         # else:
         #     p_f_and_cv[cv_arg_max] = compute_pf_cv_new(p_true[cv_arg_max],var_lists[cv_arg_max],p_f[cv_arg_max],var[cv_arg_max],ess[cv_arg_max],cv[cv_arg_max],full_lbd_samples[cv_arg_max],g_list_duplicates,X,fail_times,T,g_array_list,f_array_list,cv_arg_max,N)
         #     print(f"new estimated proba: {p_f_and_cv[cv_arg_max,0]}")
@@ -2093,11 +2262,10 @@ def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
         print(f"estimated failure proba: {p_f}")
         #print(f"estimated failure proba 2: {p_f2}")
         #print(f"10 first estimated failure proba: {p_f[:10]}")
-
         # relative error for probas estimations
-        # error = np.abs(((np.array(p_f)/p_true)-1))
-        # print(f"relative errors for probability estimations : {np.sort(error)}")
-        # print(f"mean relative error : {np.mean(error)}")
+        error = np.abs(((np.array(p_f)/p_true)-1))
+        print(f"relative errors for probability estimations : {np.sort(error)}")
+        print(f"mean relative error : {np.mean(error)}")
         cv = p_f_and_cv[:,1]
         var = p_f_and_cv[:,2]
         ess = p_f_and_cv[:,3]
@@ -2110,8 +2278,23 @@ def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
         print(f"mean ess : {np.mean(ess)}")
         print(f"min ess : {np.min(ess)}")
         #print(f"estimed cv2 : {estim_cv2}")
+        # if n_IS == 2:
+        #     print(f"\nnumber of cv better than the previous one: {np.sum(p_f_and_cv[:,5])}")
+        #     print(f"number of cv better than the previous one and used: {np.sum(p_f_and_cv[:,6])}\n")
         S = ((1/M)*np.sum([p_f[i]*p_f[i+M]  for i in range(M)])-(1/M)*np.sum([p_f[i] for i in range(M)])* (1/M)*np.sum([p_f[i+M]  for i in range(M)]))/ ((1/M)*np.sum([p_f[i]**2 for i in range(M)])- ((1/M)*np.sum([p_f[i]  for i in range(M)]))**2)
         print(f"current Sobol index estimation: {S}")
+
+        used_set, _ = get_used_indices_set_list(used_indices_lists)
+        print(f"number of different mixture used: {len(used_set)}")
+        # get used samples batch indices for each p_f estimation
+        # if n_IS==2:
+        #     used_indices_lists_t1 = used_indices_lists.copy()
+        # elif n_IS==3:
+        #     used_indices_lists_t2 = used_indices_lists.copy()
+        # elif n_IS==4:
+        #     return full_lbd_samples, used_indices_lists_t1,used_indices_lists_t2,used_indices_lists
+        if n_IS == max_iter:
+            return full_lbd_samples,used_indices_lists
 
         # estimation of variance of pick_freeze estimator with bootstrap
         # var_bootstrap,mean_bootstrap = var_estimation_bootstrap(p_f,M)
@@ -2128,32 +2311,39 @@ def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
         if np.prod(same_sample):
             print("\n no additionnal X sample used for the new estimation \n")
         # check first parameters with highest cv (or ESS)
-        # Total Sobol criterion
-        cv = select_index_to_improve(p_f,var,2000)
-        print(f"sum of first order Sobols: {np.sum(cv[cv>0])}")
-        print(f"number of positive Sobols: {np.sum(cv>0)}")
-        print(f"number of Sobols superior to 10%: {np.sum(cv>0.1)}")
-        print(f"paramaters corresponding to positive Sobol: {full_lbd_samples[cv>0]}")
-        # update only parameter with Sobol superior to 1%
-        update_list = np.where(cv>0.01)[0]
-        print(f"number of potential probability updates : {len(update_list)}")
-        cv_argsort = np.argsort(cv)
-        cv_arg_max = np.argmax(cv)
-        print(f"parameter yielding max error : {full_lbd_samples[cv_arg_max]}")
-        print(f"max error : {cv[cv_arg_max]}")
-        print(f"corresponding true proba: {p_true[cv_arg_max]}")
-        print(f"corresponding estimated proba: {p_f[cv_arg_max]}")
-        print(f"corresponding estimated variance: {var[cv_arg_max]}")
-        print(f"corresponding estimated cv: {np.sqrt(var[cv_arg_max])/p_f[cv_arg_max]}")
-        #compute_ksi(p_f,var,1000,cv_arg_max,1000,[1.,0.9,0.5,0.1,1e-9,0.])
 
-        # ESS min
-        #cv_arg_min = np.argmin(cv)
-        cv_max = cv[cv_arg_max]
-        lbd_max = full_lbd_samples[cv_arg_max]
-        # cv_max = cv[cv_arg_min]
-        # lbd_max = full_lbd_samples[cv_arg_min]
-
+        # compute samples for all initial points first, then chose other points
+        """
+        if n_IS>=len(lbd_g_list):
+            
+            # First order Sobol criterion
+            cv,estimator_cv = select_index_to_improve(p_f,var,2000)
+            print(f"estimated cv of Sobol: {estimator_cv}")
+            print(f"sum of first order Sobols: {np.sum(cv[cv>0])}")
+            print(f"number of positive Sobols: {np.sum(cv>0)}")
+            print(f"number of Sobols superior to 5%: {np.sum(cv>0.05)}")
+            print(f"number of Sobols superior to 10%: {np.sum(cv>0.1)}")
+            print(f"paramaters corresponding to positive Sobol: {full_lbd_samples[cv>0]}")
+            # update only parameter with Sobol superior to 1%
+            #update_list = np.where(cv>0.01)[0]
+            #print(f"number of potential probability updates : {len(update_list)}")
+            cv_argsort = np.argsort(cv)
+            cv_arg_max = np.argmax(cv)
+            print(f"parameter yielding max error : {full_lbd_samples[cv_arg_max]}")
+            print(f"max error : {cv[cv_arg_max]}")
+            print(f"corresponding true proba: {p_true[cv_arg_max]}")
+            print(f"corresponding estimated proba: {p_f[cv_arg_max]}")
+            print(f"corresponding estimated variance: {var[cv_arg_max]}")
+            print(f"corresponding estimated cv: {np.sqrt(var[cv_arg_max])/p_f[cv_arg_max]}")
+            #compute_ksi(p_f,var,1000,cv_arg_max,1000,[1.,0.9,0.5,0.1,1e-9,0.])
+            
+            # ESS min
+            #cv_arg_min = np.argmin(cv)
+            cv_max = cv[cv_arg_max]
+            lbd_max = full_lbd_samples[cv_arg_max]
+            # cv_max = cv[cv_arg_min]
+            # lbd_max = full_lbd_samples[cv_arg_min]
+        """
         # check first parameters with highest var
         # var_argsort = np.argsort(var)
         # var_arg_max = np.argmax(var)
@@ -2180,64 +2370,73 @@ def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
         # print(f"corresponding parameters: {[full_lbd_samples[var_argsort[-i]] for i in range(1,3)]}")
         cv = p_f_and_cv[:,1]
         cv_max= np.max(cv)
+    #!!!! to remove after check
+        cv_arg_max = np.argmax(cv)
+        lbd_max = full_lbd_samples[cv_arg_max]
+        print(f"parameter yielding max error : {full_lbd_samples[cv_arg_max]}")
+
         if cv_max > eps:
         # if ESS inferior to threshold
         # if cv_max < eps:
         #if var_max > eps:
-        # if cv_arg_max different from previous cv_arg_max, do AIS-CE, else reuse same
-            if cv_arg_max != cv_arg_max_previous:
-            # if cv_arg_min != cv_arg_max_previous:
-            #if var_arg_max != var_arg_max_previous:
+            # if all LHS lbd used, search for new lbd
+            if n_IS>=len(lbd_g_list): 
+            # if cv_arg_max different from previous cv_arg_max, do AIS-CE, else reuse same
+                if cv_arg_max != cv_arg_max_previous:
+                # if cv_arg_min != cv_arg_max_previous:
+                #if var_arg_max != var_arg_max_previous:
 
-                # start with previous point
-                
-                # new distribution to test
-                mu = [lbd_max[0],lbd_max[1]]
-                Sigma = ot.CovarianceMatrix([[lbd_max[2],0],[0,lbd_max[2]]])
-                X_vect = ot.RandomVector(ot.Normal(mu,Sigma))
-                
-                # run NAIS on new sample
-                Y = ot.CompositeRandomVector(f_ot, X_vect)
-                myEvent = ot.ThresholdEvent(Y, ot.Less(), QoI_threshold)
-                quantileLevel = 0.1
-                algo = ot.NAIS(myEvent, quantileLevel)
-                algo.setKeepSample(True)
+                    # start with previous point
+                    
+                    _,_,lbd_g_new,_ = AIS_CE(lbd_start,lbd_max,parameter_list,T,0,10000,alpha,[i for i in range(len(parameter_list))])
+                    #lbd_g_new = lbd_g
+                    # print(f"lbd_g : {lbd_g}")
+                    # print(f"lbd_g new : {lbd_g_new}")
+                    #_,_,lbd_g_new,_ = AIS_CE(lbd_start,lbd_max,parameter_list,T,0,N,alpha,[i for i in range(len(parameter_list))])
+                    #lbd_g_new = lbd_start
+                    print("AIS_CE completed")
+                    #lbd_g_new = lbd_g.copy()
+                    #print("new IS parameters")
+                    #for x_index in range(len(lbd_g_new)):
+                    #    print(f"{parameter_list[x_index][1]} ({x_index}): {lbd_g_new[x_index]}")
+                    #draw_g_new = [(lambda lbd_t=lbd_i: np.random.default_rng().normal(loc = lbd_t[0],scale=lbd_t[1])) for lbd_i in lbd_g_new]
+                    draw_g_new = (lambda lbd_t = lbd_g_new : np.random.default_rng().multivariate_normal(mean = lbd_t[0], cov = lbd_t[1]))
+                    #g_list+=[lambda x, lbd_t=lbd_g_new: 1/(2*np.pi*np.linalg.det(lbd_t[1]))*np.exp(-0.5*(np.array([x-lbd_t[0]])@np.linalg.inv(lbd_t[1])@np.array([x-lbd_t[0]]).T)[0,0])]#[[(lambda x, lbd_t=lbd_i: 1/(np.sqrt(2*np.pi)*lbd_t[1])*np.exp(-0.5*((x-lbd_t[0])/lbd_t[1])**2)) for lbd_i in lbd_g_new]]
+                    g_list += [lambda x, lbd_t=lbd_g_new: multivariate_normal.pdf(lbd_t[0],mean = lbd_t[0],cov = lbd_t[1])]
+                    g_list_duplicates+=[0]
+                    # draw samples according to the density
+                    X_new,_,fail_times_new = sample_IS(draw_g_new,parameter_list,N)
+                    print(f"proportion of new samples in failure zone: {np.mean(fail_times_new<T)}")
+                    #X_new = X_copy.copy()
+                    #fail_times_new = fail_times_copy.copy()
 
-                algo.run()
-                result = algo.getResult()
-
-                print("AIS_CE completed")
-                Ns = algo.getStepsNumber()
-                print("Number of steps= ", Ns)
-                #lbd_g_new = lbd_g.copy()
-                #print("new IS parameters")
-                #for x_index in range(len(lbd_g_new)):
-                #    print(f"{parameter_list[x_index][1]} ({x_index}): {lbd_g_new[x_index]}")
-                #draw_g_new = [(lambda lbd_t=lbd_i: np.random.default_rng().normal(loc = lbd_t[0],scale=lbd_t[1])) for lbd_i in lbd_g_new]
-                g_list+=[result.getAuxiliaryDistribution()]
+            # if cv_arg_max == cv_arg_max_previous:
+            #     print("lbd index yielding cv_max is the same as previously")
+                else:
+                    
+                    print("lbd index yielding cv_max is the same as previously, reuse of previous AIS-CE results")
+                    # print("lbd index yielding cv_max is the same as previously, new AIS-CE for same lbd")
+                    # _,_,lbd_g_new,_ = AIS_CE(lbd_start,lbd_max,parameter_list,T,0,10000,alpha,[i for i in range(len(parameter_list))])
+                    # draw_g_new = (lambda lbd_t = lbd_g_new : np.random.default_rng().multivariate_normal(mean = lbd_t[0], cov = lbd_t[1]))
+                    X_new,_,fail_times_new = sample_IS(draw_g_new,parameter_list,N)
+                    print(f"proportion of new samples in failure zone: {np.mean(fail_times_new<T)}")
+                    #g_list+=[lambda x, lbd_t=lbd_g_new: 1/(2*np.pi*np.linalg.det(lbd_t[1]))*np.exp(-0.5*(np.array([x-lbd_t[0]])@np.linalg.inv(lbd_t[1])@np.array([x-lbd_t[0]]).T)[0,0])]#[[(lambda x, lbd_t=lbd_i: 1/(np.sqrt(2*np.pi)*lbd_t[1])*np.exp(-0.5*((x-lbd_t[0])/lbd_t[1])**2)) for lbd_i in lbd_g_new]]
+                    g_list += [lambda x, lbd_t=lbd_g_new: multivariate_normal.pdf(lbd_t[0],mean = lbd_t[0],cov = lbd_t[1])]
+                    g_list_duplicates+=[g_list_duplicates[-1]+1]
+                    # update previous g_list_duplicates indices
+                    for duplicate_index in range(g_list_duplicates[-1]):
+                        g_list_duplicates[len(g_list_duplicates)-2-duplicate_index] = g_list_duplicates[-1]
+            # use LHS values
+            else:
+                draw_g_new = (lambda lbd_t = lbd_g_list[1] : np.random.default_rng().multivariate_normal(mean = lbd_t[0], cov = lbd_t[1]))
+                #g_list+=[lambda x, lbd_t=lbd_g_list[1]: 1/(2*np.pi*np.linalg.det(lbd_t[1]))*np.exp(-0.5*(np.array([x-lbd_t[0]])@np.linalg.inv(lbd_t[1])@np.array([x-lbd_t[0]]).T)[0,0])]#[[(lambda x, lbd_t=lbd_i: 1/(np.sqrt(2*np.pi)*lbd_t[1])*np.exp(-0.5*((x-lbd_t[0])/lbd_t[1])**2)) for lbd_i in lbd_g_new]]
+                g_list += [lambda x, lbd_t=lbd_g_list[1]: multivariate_normal.pdf(lbd_t[0],mean = lbd_t[0],cov = lbd_t[1])]
                 g_list_duplicates+=[0]
                 # draw samples according to the density
-                X_new,fail_times_new = sample_IS(g_list[-1],N)
+                X_new,_,fail_times_new = sample_IS(draw_g_new,parameter_list,N)
                 print(f"proportion of new samples in failure zone: {np.mean(fail_times_new<T)}")
-                #X_new = X_copy.copy()
-                #fail_times_new = fail_times_copy.copy()
-
-        # if cv_arg_max == cv_arg_max_previous:
-        #     print("lbd index yielding cv_max is the same as previously")
-            else:
-                
-                print("lbd index yielding cv_max is the same as previously, reuse of previous AIS-CE results")
-                # print("lbd index yielding cv_max is the same as previously, new AIS-CE for same lbd")
-                # _,_,lbd_g_new,_ = AIS_CE(lbd_start,lbd_max,parameter_list,T,0,10000,alpha,[i for i in range(len(parameter_list))])
-                # draw_g_new = (lambda lbd_t = lbd_g_new : np.random.default_rng().multivariate_normal(mean = lbd_t[0], cov = lbd_t[1]))
-                X_new,fail_times_new = sample_IS(g_list[-1],N)
-                print(f"proportion of new samples in failure zone: {np.mean(fail_times_new<T)}")
-                # doesn't work if first distribution is picked again!
-                g_list+=[result.getAuxiliaryDistribution()]
-                g_list_duplicates+=[g_list_duplicates[-1]+1]
-                # update previous g_list_duplicates indices
-                for duplicate_index in range(g_list_duplicates[-1]):
-                    g_list_duplicates[len(g_list_duplicates)-2-duplicate_index] = g_list_duplicates[-1]
+                # placeholder value to avoid equality with previous index
+                cv_arg_max = cv_arg_max_previous-1
             print(f"g_list_duplicates : {g_list_duplicates}")
             # update samples and g (multiple IS)
             X = np.concatenate((X,X_new))
@@ -2248,6 +2447,7 @@ def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
             #lbd_start = lbd_g_new.copy()
             cv_arg_max_previous = cv_arg_max#cv_arg_min #
             #var_arg_max_previous = var_arg_max
+
             n_IS+=1
             """            
             print(f'\n stats check\n')
@@ -2263,7 +2463,7 @@ def Sobol_mIS_adaptive(aux_dist_0,lbd_indices_v,T,N,M,eps):
 
     S = ((1/M)*np.sum([p_f[i]*p_f[i+M]  for i in range(M)])-(1/M)*np.sum([p_f[i] for i in range(M)])* (1/M)*np.sum([p_f[i+M]  for i in range(M)]))/ ((1/M)*np.sum([p_f[i]**2 for i in range(M)])- ((1/M)*np.sum([p_f[i]  for i in range(M)]))**2)
 
-    return S,g_list,X
+    return S,g,X
 
 def Sobol_mIS_ad_comparison(lbd_g,lbd_indices_v,parameter_list,T,N,M,alpha,eps):
     """
